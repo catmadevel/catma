@@ -155,7 +155,7 @@ public class CatmaApplication extends UI
 		
 		storeParameters(request.getParameterMap());
 		
-		Page.getCurrent().setTitle("CATMA 5.0 " + MINORVERSION);
+		Page.getCurrent().setTitle("CATMA 6.0 " + MINORVERSION);
 		
 		mainLayout = new VerticalLayout();
 		mainLayout.setSizeFull();
