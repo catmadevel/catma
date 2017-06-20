@@ -3,8 +3,6 @@ package de.catma.heureclea.autotagger;
 import java.io.IOException;
 import java.net.URLEncoder;
 
-import javax.naming.NamingException;
-
 import org.restlet.Context;
 import org.restlet.data.Method;
 import org.restlet.resource.ClientResource;
@@ -19,6 +17,7 @@ public class AnnotationGenerator {
 		id, 
 		token, 
 		api,
+		sid,
 		;
 		
 		public String asParam() {
@@ -31,14 +30,14 @@ public class AnnotationGenerator {
 
 	private String generatorURL;
 
-	public AnnotationGenerator() throws NamingException {
+	public AnnotationGenerator() {
 		this.generatorURL = 
 			RepositoryPropertyKey.AnnotationGeneratorURL.getValue();
 	}
 
 	public void generate(
 			String corpusId, TagsetIdentification tagsetIdentification, 
-			String identifier, String token, String apiURL) throws IOException, InterruptedException {
+			String identifier, String token, String apiURL, String sourceDocId) throws IOException, InterruptedException {
 		
 		StringBuilder urlBuilder = new StringBuilder(generatorURL);
 		urlBuilder.append(Parameter.cid.asInitialParam()); 
@@ -51,6 +50,8 @@ public class AnnotationGenerator {
 		urlBuilder.append(token);
 		urlBuilder.append(Parameter.api.asParam());
 		urlBuilder.append(URLEncoder.encode(apiURL, "UTF-8"));
+		urlBuilder.append(Parameter.sid.asParam());
+		urlBuilder.append(sourceDocId);
 		
 		ClientResource client = 
 				new ClientResource(Context.getCurrent(), Method.GET, urlBuilder.toString());

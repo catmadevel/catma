@@ -19,13 +19,17 @@
 package de.catma.ui.repository.wizard;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Locale;
-import java.util.TreeSet;
 
+import com.vaadin.data.Property;
 import com.vaadin.data.Container.ItemSetChangeEvent;
 import com.vaadin.data.Container.ItemSetChangeListener;
 import com.vaadin.data.Property.ValueChangeEvent;
 import com.vaadin.data.Property.ValueChangeListener;
+import com.vaadin.data.util.BeanItemContainer;
 import com.vaadin.event.FieldEvents.TextChangeEvent;
 import com.vaadin.event.FieldEvents.TextChangeListener;
 import com.vaadin.shared.ui.label.ContentMode;
@@ -40,80 +44,33 @@ import com.vaadin.ui.HorizontalLayout;
 import com.vaadin.ui.Label;
 import com.vaadin.ui.ListSelect;
 import com.vaadin.ui.Panel;
+import com.vaadin.ui.Table;
 import com.vaadin.ui.TextField;
 import com.vaadin.ui.UI;
 import com.vaadin.ui.VerticalLayout;
-import com.vaadin.ui.themes.Reindeer;
 
 import de.catma.document.source.IndexInfoSet;
 import de.catma.document.source.LanguageDetector;
-import de.catma.document.source.SourceDocumentInfo;
+import de.catma.document.source.LanguageItem;
 import de.catma.ui.CatmaApplication;
 import de.catma.ui.dialog.wizard.DynamicWizardStep;
 import de.catma.ui.dialog.wizard.WizardStepListener;
 
 class IndexerOptionsPanel extends GridLayout implements DynamicWizardStep {
 	
-    /**
-     * An item in the language list.
-     */
-    private static class LanguageItem implements Comparable<LanguageItem> {
-        private Locale locale;
-
-        /**
-         * Constructor
-         * @param locale the locale of this item
-         */
-        public LanguageItem(Locale locale) {
-            this.locale = locale;
-        }
-
-        /**
-         * @return the locale of this item
-         */
-        public Locale getLocale() {
-            return locale;
-        }
-
-        @Override
-        public String toString() {
-            return locale.getDisplayLanguage()
-                + (locale.getDisplayCountry().isEmpty()? "" : "-" + locale.getDisplayCountry());
-        }
-
-        /**
-         * Compares by string representation of the item.
-         */
-        public int compareTo(LanguageItem o) {
-            return this.toString().compareTo(o.toString());
-        }
-
-		@Override
-		public int hashCode() {
-			return locale.hashCode();
-		}
-
-		@Override
-		public boolean equals(Object obj) {
-			if (obj instanceof LanguageItem) {
-				return locale.equals(((LanguageItem)obj).locale);
-			}
-			return false;
-		}
-    }
-
     private static final char APOSTROPHE = '\'';
+    
+    private ArrayList<LanguageItem> languageItems;
 	
 	private boolean onAdvance;
 	private WizardStepListener wizardStepListener;
 	private AddSourceDocWizardResult wizardResult;
+	
+	private Table table;
+	
 	private CheckBox cbUseApostrophe;
-	private SourceDocumentInfo sourceDocumentInfo;
-
-	private ListSelect languagesListSelect;
-
-	private TreeSet<LanguageItem> sortedLangs;
-
+	private CheckBox cbAdvanceOptions;
+	
 	private ListSelect unseparableCharacterSequencesListSelect;
 
 	private Button btLoadUcsList;
@@ -125,32 +82,52 @@ class IndexerOptionsPanel extends GridLayout implements DynamicWizardStep {
 	private TextField tfUcs;
 
 	private Button btRemoveUcs;
+	
+	private HorizontalLayout ucsAddRemoveLayout;
+	
+	private VerticalLayout loadSavePanel;
 
 	public IndexerOptionsPanel(WizardStepListener wizardStepListener,
 			AddSourceDocWizardResult wizardResult) {
-		super(3,5);
+		super(2,1);
 		this.onAdvance = true;
 		this.wizardStepListener = wizardStepListener;
 		this.wizardResult = wizardResult;
-		this.sourceDocumentInfo = wizardResult.getSourceDocumentInfo();
 		initComponents();
 		initActions();
 	}
 
 	private void initActions() {
-		this.languagesListSelect.addValueChangeListener(new ValueChangeListener() {
-			
+		
+		cbUseApostrophe.setVisible(false);
+		unseparableCharacterSequencesListSelect.setVisible(false);
+		loadSavePanel.setVisible(false);
+		ucsAddRemoveLayout.setVisible(false);
+		
+		table.addValueChangeListener(new ValueChangeListener() {
 			public void valueChange(ValueChangeEvent event) {
-				onAdvance = (languagesListSelect.getValue() != null);
-				if (languagesListSelect.getValue() != null) {
-					
-					sourceDocumentInfo.getIndexInfoSet().setLocale(
-							((LanguageItem)languagesListSelect.getValue()).getLocale());
+				if(table.getValue() == null){
+					return;
 				}
-				wizardStepListener.stepChanged(IndexerOptionsPanel.this);
+				
+				SourceDocumentResult sdr = (SourceDocumentResult)table.getValue();
+				
+				BeanItemContainer<String> container = 
+						new BeanItemContainer<String>(String.class, 
+							sdr.getSourceDocumentInfo().getIndexInfoSet().getUnseparableCharacterSequences());
+				
+//				BeanItemContainer<SourceDocumentResult> container = new BeanItemContainer<SourceDocumentResult>(SourceDocumentResult.class);
+//				container.addNestedContainerProperty("sourceDocumentInfo.indexInfoSet.unseparableCharacterSequences");
+//				container.addBean(sdr);
+				
+				unseparableCharacterSequencesListSelect.setContainerDataSource(container);
+				
+				IndexInfoSet indexInfoSet = sdr.getSourceDocumentInfo().getIndexInfoSet();
+				boolean apostropheSeperator = indexInfoSet.getUserDefinedSeparatingCharacters().contains(APOSTROPHE);				
+				cbUseApostrophe.setValue(apostropheSeperator);
 			}
 		});
-		
+
 		this.tfUcs.addTextChangeListener(new TextChangeListener() {
 			public void textChange(TextChangeEvent event) {
 				btAddUcs.setEnabled(
@@ -168,8 +145,7 @@ class IndexerOptionsPanel extends GridLayout implements DynamicWizardStep {
 		
 		this.unseparableCharacterSequencesListSelect.addItemSetChangeListener(new ItemSetChangeListener() {
 			public void containerItemSetChange(ItemSetChangeEvent event) {
-				btRemoveUcs.setEnabled(
-					unseparableCharacterSequencesListSelect.getContainerDataSource().size() > 0);
+				btRemoveUcs.setEnabled(unseparableCharacterSequencesListSelect.getContainerDataSource().size() > 0);
 			}
 		});
 		
@@ -181,13 +157,12 @@ class IndexerOptionsPanel extends GridLayout implements DynamicWizardStep {
 		
 		btRemoveUcs.addClickListener(new ClickListener() {
 			public void buttonClick(ClickEvent event) {
-				unseparableCharacterSequencesListSelect.removeItem(
-						unseparableCharacterSequencesListSelect.getValue());
-				sourceDocumentInfo.getIndexInfoSet().removeUnseparableCharacterSequence(
-						tfUcs.getValue().toString());
-				if (!sourceDocumentInfo.getIndexInfoSet().getUnseparableCharacterSequences().isEmpty()) {
-					unseparableCharacterSequencesListSelect.setValue(
-						sourceDocumentInfo.getIndexInfoSet().getUnseparableCharacterSequences().get(0));
+				Object ucs = unseparableCharacterSequencesListSelect.getValue();
+				unseparableCharacterSequencesListSelect.removeItem(ucs);
+				IndexInfoSet indexInfoSet = ((SourceDocumentResult)table.getValue()).getSourceDocumentInfo().getIndexInfoSet();
+				indexInfoSet.removeUnseparableCharacterSequence(ucs.toString());
+				if (!indexInfoSet.getUnseparableCharacterSequences().isEmpty()) {
+					unseparableCharacterSequencesListSelect.setValue(indexInfoSet.getUnseparableCharacterSequences().get(0));
 				}
 			}
 		});
@@ -196,12 +171,31 @@ class IndexerOptionsPanel extends GridLayout implements DynamicWizardStep {
 			
 			public void valueChange(ValueChangeEvent event) {
 				
-				if (cbUseApostrophe.getValue() 
-						&& (sourceDocumentInfo.getIndexInfoSet().getUserDefinedSeparatingCharacters().isEmpty())) {
-					sourceDocumentInfo.getIndexInfoSet().addUserDefinedSeparatingCharacter(APOSTROPHE);
+				IndexInfoSet indexInfoSet = ((SourceDocumentResult)table.getValue()).getSourceDocumentInfo().getIndexInfoSet();
+				if (cbUseApostrophe.getValue() && (!indexInfoSet.getUserDefinedSeparatingCharacters().contains(APOSTROPHE))) {
+					indexInfoSet.addUserDefinedSeparatingCharacter(APOSTROPHE);
+				}
+				else if(!cbUseApostrophe.getValue()){
+					indexInfoSet.removeUserDefinedSeparatingCharacter(APOSTROPHE);
+				}
+			}
+		});
+		
+		cbAdvanceOptions.addValueChangeListener(new ValueChangeListener() {
+			
+			public void valueChange(ValueChangeEvent event) {
+				
+				if (cbAdvanceOptions.getValue()) {
+					cbUseApostrophe.setVisible(true);
+					unseparableCharacterSequencesListSelect.setVisible(true);
+					loadSavePanel.setVisible(true);
+					ucsAddRemoveLayout.setVisible(true);
 				}
 				else {
-					sourceDocumentInfo.getIndexInfoSet().removeUserDefinedSeparatingCharacter(APOSTROPHE);
+					cbUseApostrophe.setVisible(false);
+					unseparableCharacterSequencesListSelect.setVisible(false);
+					loadSavePanel.setVisible(false);
+					ucsAddRemoveLayout.setVisible(false);
 				}
 			}
 		});
@@ -213,84 +207,130 @@ class IndexerOptionsPanel extends GridLayout implements DynamicWizardStep {
 		
 		setSizeFull();
 		
-		Label infoLabel = new Label();
+		Locale[] availableLocales = Locale.getAvailableLocales();
+		languageItems = new ArrayList<LanguageItem>();
+		for (Locale locale : availableLocales) {
+			languageItems.add(new LanguageItem(locale));
+		}
 		
+		BeanItemContainer<SourceDocumentResult> container = new BeanItemContainer<SourceDocumentResult>(SourceDocumentResult.class);
+		container.addNestedContainerProperty("sourceDocumentInfo.techInfoSet.fileName");
+		container.addNestedContainerProperty("sourceDocumentInfo.indexInfoSet.language");
+		
+		table = new Table("Documents", container);
+		
+		//TODO: investigate whether using a FieldFactory would make things easier..
+		table.addGeneratedColumn("sourceDocumentInfo.indexInfoSet.language", 
+				new ComboBoxColumnGenerator(languageItems, makeComboBoxListenerGenerator())
+		);
+		
+		table.setVisibleColumns(new Object[]{
+				"sourceDocumentInfo.techInfoSet.fileName",
+				"sourceDocumentInfo.indexInfoSet.language"
+		});
+		table.setColumnHeaders(new String[]{"File Name", "Language"});
+		
+		table.setSelectable(true);
+		table.setNullSelectionAllowed(false);
+		table.setImmediate(true);
+		
+		addComponent(table, 0, 0);
+		
+		VerticalLayout expertLayout = new VerticalLayout();
+		expertLayout.setStyleName("expert-features");
+	
+		Label infoLabel = new Label();
+			
 		infoLabel.setContentMode(ContentMode.HTML);
 		infoLabel.setValue(
-				"<p>This section allows you to finetune the creation " +
-				"of the word list of your Source Document.</p>" +
-				"<p>If you are unsure what to do, just select the language " +
-				"and leave everything else unmodified.</p>");
-		addComponent(infoLabel, 0, 0, 2, 0);
+			"<p>This section allows you to finetune the creation " +
+			"of the word list of the selected Source Document.</p>" +
+			"<p>If you are unsure what to do, just select the language " +
+			"and leave everything else unmodified.<br/>" +
+			"Click below for Expert Features:</p>"
+		);
+		
+		expertLayout.addComponent(infoLabel);
+		
+		cbAdvanceOptions = new CheckBox("Advanced Options");
+		
+		expertLayout.addComponent(cbAdvanceOptions);
 		
 		cbUseApostrophe = new CheckBox("always use the apostrophe as a word separator");
 		
-		addComponent(cbUseApostrophe, 0, 1, 2, 1);
+		expertLayout.addComponent(cbUseApostrophe);
 		
-        Locale[] all = Locale.getAvailableLocales();
-
-        sortedLangs = new TreeSet<LanguageItem>();
-        for (Locale locale : all) {
-            sortedLangs.add(new LanguageItem(locale));
-        }
-
-        languagesListSelect = 
-        		new ListSelect(
-        				"Please select the predominant language of the Source Document:", 
-        				sortedLangs);
-        languagesListSelect.setNullSelectionAllowed(false);
-        languagesListSelect.setSizeFull();
-        languagesListSelect.setImmediate(true);
-        
-        addComponent(languagesListSelect, 0, 2, 0, 3);
-        
-        unseparableCharacterSequencesListSelect = 
-        		new ListSelect("Unseparable character sequences:");
+        unseparableCharacterSequencesListSelect = new ListSelect("Unseparable character sequences:");
         unseparableCharacterSequencesListSelect.setNullSelectionAllowed(false);
         unseparableCharacterSequencesListSelect.setSizeFull();
         unseparableCharacterSequencesListSelect.setImmediate(true);
         
-        addComponent(unseparableCharacterSequencesListSelect, 1, 2, 1, 3);
+        expertLayout.addComponent(unseparableCharacterSequencesListSelect);
         
-        HorizontalLayout ucsAddRemoveLayout = new HorizontalLayout();
+        ucsAddRemoveLayout = new HorizontalLayout();
+        
         Panel ucsAddRemovePanel = new Panel(ucsAddRemoveLayout);
-        ucsAddRemovePanel.setStyleName(Reindeer.PANEL_LIGHT);
+        ucsAddRemovePanel.setStyleName("no-border");
         ucsAddRemoveLayout.setSpacing(true);
         ucsAddRemoveLayout.setSizeFull();
         
         btAddUcs = new Button("Add entry");
         btAddUcs.setEnabled(false);
         ucsAddRemoveLayout.addComponent(btAddUcs);
+        
         tfUcs = new TextField();
         tfUcs.setInputPrompt("Add things like 'e.g.' as you see fit.");
         tfUcs.setImmediate(true);
         tfUcs.setTextChangeEventMode(TextChangeEventMode.EAGER);
-        tfUcs.setWidth("100%");
-        
-        ucsAddRemoveLayout.addComponent(tfUcs);
+        tfUcs.setWidth("100%");        
+        ucsAddRemoveLayout.addComponent(tfUcs);        
         ucsAddRemoveLayout.setExpandRatio(tfUcs, 2);
+        
         btRemoveUcs = new Button("Remove entry");
         btRemoveUcs.setEnabled(false);
         ucsAddRemoveLayout.addComponent(btRemoveUcs);
         
-        addComponent(ucsAddRemovePanel, 1, 4);
+        expertLayout.addComponent(ucsAddRemovePanel);
 
-        VerticalLayout loadSavePanel = new VerticalLayout();
+        loadSavePanel = new VerticalLayout();
         loadSavePanel.setSpacing(true);
         loadSavePanel.setWidth("80px");
         
         btLoadUcsList = new Button("Load list");
+        btLoadUcsList.setVisible(false); // no handler
         loadSavePanel.addComponent(btLoadUcsList);
+        
         btSaveUcsList = new Button("Save list");
+        btSaveUcsList.setVisible(false); // no handler
         loadSavePanel.addComponent(btSaveUcsList);
 
-        addComponent(loadSavePanel, 2, 2);
+        expertLayout.addComponent(loadSavePanel);
         
-        setColumnExpandRatio(0, 2);
-        setColumnExpandRatio(1, 2);
-
-        setRowExpandRatio(2, 2);
-        setRowExpandRatio(3, 2);
+        addComponent(expertLayout, 1, 0);
+        
+        setColumnExpandRatio(1, 1);
+	}
+	
+	private ValueChangeListenerGenerator makeComboBoxListenerGenerator(){
+		return new ValueChangeListenerGenerator() {
+			public ValueChangeListener generateValueChangeListener(Table source, final Object itemId, Object columnId) {
+				return new Property.ValueChangeListener() {
+					public void valueChange(ValueChangeEvent event) {
+						SourceDocumentResult sdr = (SourceDocumentResult) itemId;
+						
+						onAdvance = true;
+						for(SourceDocumentResult result : wizardResult.getSourceDocumentResults()){
+							if (result.getSourceDocumentInfo().getIndexInfoSet().getLocale() == null){
+								onAdvance = false;
+								break;
+							}
+						}
+						
+						wizardStepListener.stepChanged(IndexerOptionsPanel.this);
+					}
+				};
+			}
+		};
 	}
 
 	public Component getContent() {
@@ -311,18 +351,50 @@ class IndexerOptionsPanel extends GridLayout implements DynamicWizardStep {
 	}
 
 	public void stepActivated(boolean forward) {
+		if (!forward) {
+			return;
+		}
+		
+		table.removeAllItems();
+		
+		Collection<SourceDocumentResult> sourceDocumentResults = wizardResult.getSourceDocumentResults();
+				
 		try {
-			sourceDocumentInfo.setIndexInfoSet(new IndexInfoSet());
+			LanguageDetector languageDetector = new LanguageDetector();
 			
-			LanguageDetector ld = new LanguageDetector();
-			Locale locale = ld.getLocale(ld.detect(wizardResult.getSourceDocument().getContent()));
-			sourceDocumentInfo.getIndexInfoSet().setLocale(locale);
+			for (SourceDocumentResult sdr : sourceDocumentResults) {
+				IndexInfoSet newIndexInfoSet = new IndexInfoSet();				
+				
+				Locale locale = languageDetector.getLocale(
+					languageDetector.detect(sdr.getSourceDocument().getContent())
+				);
+				
+				LanguageItem detectedLanguage = new LanguageItem(locale);
+				if (!languageItems.contains(detectedLanguage)) {
+					// Because the LanguageDetector can return a locale that is not present in the languageItems collection
+					// we explicitly add it here if it's missing
+					// See the comments in https://github.com/catmadevel/catma/commit/cd3e86b61596ce618338b0ab0295f240cbbd6f7f for more details
+					languageItems.add(detectedLanguage);
+				}
+
+				newIndexInfoSet.setLanguage(detectedLanguage);
+				
+				sdr.getSourceDocumentInfo().setIndexInfoSet(newIndexInfoSet);
+			}
 			
-			LanguageItem current = new LanguageItem(locale);
-			for (LanguageItem li : this.sortedLangs) {
-				if(li.getLocale().getLanguage().equals(
-                        current.getLocale().getLanguage())) {
-					this.languagesListSelect.setValue(li);
+			Collections.sort(languageItems); // in case items were added above
+			
+			BeanItemContainer<SourceDocumentResult> container = (BeanItemContainer<SourceDocumentResult>)table.getContainerDataSource();
+			container.addAll(sourceDocumentResults);
+			
+			if(sourceDocumentResults.size() > 0){
+				table.select(sourceDocumentResults.toArray()[0]);
+			}
+			
+			onAdvance = true;
+			for(SourceDocumentResult result : sourceDocumentResults){
+				if (result.getSourceDocumentInfo().getIndexInfoSet().getLocale() == null){
+					onAdvance = false;
 					break;
 				}
 			}
@@ -332,14 +404,14 @@ class IndexerOptionsPanel extends GridLayout implements DynamicWizardStep {
 			((CatmaApplication)UI.getCurrent()).showAndLogError(
 				"Error during language detection!", e);
 		}
-
 	}
 	
 	private void addUcs(String ucs) {
 		if ((ucs != null) && !ucs.isEmpty()) {
 			unseparableCharacterSequencesListSelect.addItem(ucs);
 			unseparableCharacterSequencesListSelect.setValue(ucs);
-			sourceDocumentInfo.getIndexInfoSet().addUnseparableCharacterSequence(ucs);
+			IndexInfoSet indexInfoSet = ((SourceDocumentResult)table.getValue()).getSourceDocumentInfo().getIndexInfoSet();
+			indexInfoSet.addUnseparableCharacterSequence(ucs);
 			tfUcs.setValue("");
 			btAddUcs.setEnabled(false);
 		}

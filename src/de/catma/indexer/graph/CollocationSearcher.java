@@ -10,9 +10,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-import javax.naming.Context;
-import javax.naming.InitialContext;
-
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -95,15 +92,11 @@ class CollocationSearcher {
 			SpanDirection direction) throws IOException {
 		QueryResultRowArray searchResult = new QueryResultRowArray();
 		try {
-			Context context = new InitialContext(); 
-			
 			GraphDatabaseService graphDb = 
-					(GraphDatabaseService) context.lookup(
-							CatmaGraphDbName.CATMAGRAPHDB.name());
+				CatmaGraphDbName.CATMAGRAPHDB.getGraphDatabaseService();
 			
 			IndexBufferManager indexBufferManager = 
-					(IndexBufferManager) context.lookup(
-							IndexBufferManagerName.INDEXBUFFERMANAGER.name());
+				IndexBufferManagerName.INDEXBUFFERMANAGER.getIndeBufferManager();
 
 			// set up mapping SourceDoc->rows of base result
 			HashMap<String,Set<QueryResultRow>> baseResultRowsByDocument = 
@@ -146,6 +139,7 @@ class CollocationSearcher {
 
 			SourceDocSearcher sourceDocSearcher = new SourceDocSearcher();
 			if (bufferedDocumentIds.size() != baseResultRowsByDocument.keySet().size()) {
+				PathUtil pathUtil = new PathUtil();
 				try (Transaction transaction = graphDb.beginTx()) {
 					for (Map.Entry<String,Set<QueryResultRow>> entry 
 							: baseResultRowsByDocument.entrySet()) {
@@ -205,7 +199,8 @@ class CollocationSearcher {
 									ArrayList<TermInfo> curTermInfos = new ArrayList<TermInfo>();
 									for (Node n : collocNodesEntry.getValue()) {
 										curTermInfos.add(new TermInfo(
-											(String)n.getProperty(PositionProperty.literal.name()),
+//											(String)n.getProperty(PositionProperty.literal.name()),
+											pathUtil.getLiteralFromPosition(n),
 											(Integer)n.getProperty(PositionProperty.start.name()),
 											(Integer)n.getProperty(PositionProperty.end.name()),
 											(Integer)n.getProperty(PositionProperty.position.name())));
@@ -223,7 +218,8 @@ class CollocationSearcher {
 									for (Node n : getContext(first, spanContextSize, Direction.INCOMING)) {
 										spanContext.addBackwardToken(
 											new TermInfo(
-												(String)n.getProperty(PositionProperty.literal.name()),
+//												(String)n.getProperty(PositionProperty.literal.name()),
+												pathUtil.getLiteralFromPosition(n),
 												(Integer)n.getProperty(PositionProperty.start.name()),
 												(Integer)n.getProperty(PositionProperty.end.name()),
 												(Integer)n.getProperty(PositionProperty.position.name())));
@@ -232,7 +228,8 @@ class CollocationSearcher {
 									for (Node n : getContext(last, spanContextSize, Direction.OUTGOING)) {
 										spanContext.addForwardToken(
 											new TermInfo(
-												(String)n.getProperty(PositionProperty.literal.name()),
+//												(String)n.getProperty(PositionProperty.literal.name()),
+												pathUtil.getLiteralFromPosition(n),
 												(Integer)n.getProperty(PositionProperty.start.name()),
 												(Integer)n.getProperty(PositionProperty.end.name()),
 												(Integer)n.getProperty(PositionProperty.position.name())));
@@ -266,6 +263,8 @@ class CollocationSearcher {
 			throw new IOException(e);
 		}
 	}
+	
+	
 
 	private Map<QueryResultRow, TreeSet<Node>> createdOrderedNodesByRow(
 			Traverser traverser, Set<QueryResultRow> resultRows) {

@@ -23,7 +23,9 @@ public class JobInstaller {
 		FILE_CLEAN_OFFSET, 
 		SOURCEDOCIDXMAINTAIN, 
 		SOURCEDOCIDXMAINTAIN_MAXOBJ, 
-		SOURCEDOCIDXMAINTAIN_OFFSET,
+		SOURCEDOCIDXMAINTAIN_OFFSET, 
+		DBIDXMAINTAINMAXOBJECTCOUNT, 
+		INDEX_MAINTAINER_ENABLED,
 		;
 	}
 	
@@ -31,6 +33,23 @@ public class JobInstaller {
 	public JobInstaller() {
 	}
 
+	public void deinstall(
+			Class<? extends Job> jobClass) throws SchedulerException {
+        SchedulerRepository schedRep = SchedulerRepository.getInstance();
+    	
+        Scheduler scheduler = schedRep.lookup("CATMAQuartzScheduler");
+        
+        TriggerKey triggerKey = TriggerKey.triggerKey(
+        		jobClass.getName()+"_Trigger",
+    			TriggerGroup.DEFAULT.name());
+        
+        Trigger trigger = scheduler.getTrigger(triggerKey);
+
+        if (trigger != null) {
+        	scheduler.unscheduleJob(triggerKey);
+        	logger.info("Unscheduled " + jobClass.getSimpleName());
+        }
+	}
 	
 	public void install(
 			Class<? extends Job> jobClass, 

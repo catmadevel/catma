@@ -38,12 +38,11 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Logger;
 
-import javax.naming.Context;
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
 import javax.sql.DataSource;
 
 import org.jooq.DSLContext;
@@ -82,19 +81,24 @@ import de.catma.tag.TagLibraryReference;
 import de.catma.tag.TagManager;
 import de.catma.tag.TagManager.TagManagerEvent;
 import de.catma.tag.TagsetDefinition;
+import de.catma.tag.Version;
+import de.catma.user.Permission;
 import de.catma.user.Role;
 import de.catma.user.User;
+import de.catma.user.UserProperty;
 import de.catma.util.IDGenerator;
 import de.catma.util.Pair;
 
 public class DBRepository implements IndexedRepository {
+	
+	private static final Logger LOG = Logger.getLogger(DBRepository.class.getName());
 	
 	private String name;
 	
 	private CorpusHandler dbCorpusHandler;
 	private SourceDocumentHandler dbSourceDocumentHandler;
 	private TagLibraryHandler dbTagLibraryHandler;
-	private UserMarkupCollectionHandler dbUserMarkupCollectionHandler;
+	private volatile UserMarkupCollectionHandler dbUserMarkupCollectionHandler;
 	
 	private IndexerFactory indexerFactory;
 	private Indexer indexer;
@@ -132,7 +136,7 @@ public class DBRepository implements IndexedRepository {
 			BackgroundServiceProvider backgroundServiceProvider,
 			IndexerFactory indexerFactory, 
 			SerializationHandlerFactory serializationHandlerFactory,
-			String url, String user, String pass, String tempDir) throws NamingException {
+			String url, String user, String pass, String tempDir) {
 		
 
 		this.name = name;
@@ -326,9 +330,7 @@ public class DBRepository implements IndexedRepository {
 	public void open(Map<String, String> userIdentification) throws Exception {
 		initTagManagerListeners();
 		
-		Context context = new InitialContext();
-
-		this.dataSource = (DataSource) context.lookup(CatmaDataSourceName.CATMADS.name());
+		this.dataSource = CatmaDataSourceName.CATMADS.getDataSource();
 		
 		this.dbSourceDocumentHandler = 
 				new SourceDocumentHandler(this, repoFolderPath);
@@ -345,17 +347,21 @@ public class DBRepository implements IndexedRepository {
 		loadContent(db);
 	}
 	
-	private void loadCurrentUser(
-			Map<String, String> userIdentification) throws IOException {
-
+	public DBUser createIfAbsent(Map<String, String> userIdentification) throws IOException {
 		TransactionalDSLContext db = new TransactionalDSLContext(dataSource, SQLDialect.MYSQL);
-		
 		try {
-	
+			DBUser user = null;
+			
+			boolean isGuest = 
+				(userIdentification.get(UserProperty.guest.name())==null
+					?false
+					:Boolean.valueOf(userIdentification.get(UserProperty.guest.name())));
+			
+			
 			Record record = db
 			.select()
 			.from(USER)
-			.where(USER.IDENTIFIER.eq(userIdentification.get("user.ident")))
+			.where(USER.IDENTIFIER.equalIgnoreCase(userIdentification.get(UserProperty.identifier.name())))
 			.fetchOne();
 			
 			if (record == null) {
@@ -367,15 +373,19 @@ public class DBRepository implements IndexedRepository {
 				.where(ROLE.IDENTIFIER.eq(Role.user.name()))
 				.fetchOne()
 				.value1();
-						
+				
 				Record idRecord = db
 				.insertInto(
 					USER,
 						USER.IDENTIFIER,
-						USER.LOCKED)
+						USER.LOCKED,
+						USER.LASTLOGIN,
+						USER.GUEST)
 				.values(
-					userIdentification.get("user.ident"),
-					(byte)0)
+					userIdentification.get(UserProperty.identifier.name()),
+					(byte)0,
+					new java.sql.Timestamp(new Date().getTime()),
+					(byte)(isGuest?1:0))
 				.returning(USER.USERID)
 				.fetchOne();
 				
@@ -389,15 +399,23 @@ public class DBRepository implements IndexedRepository {
 					userRoleId)
 				.execute();
 				
-				currentUser = new DBUser(
+				user = new DBUser(
 					idRecord.getValue(USER.USERID), 
-					userIdentification.get("user.ident"),
+					userIdentification.get(UserProperty.identifier.name()),
+					false,
+					isGuest,
 					false);
 				
 				db.commitTransaction();
 			}
 			else {
-				currentUser = record.map(new UserMapper());
+				user = record.map(new UserMapper());
+				
+				db
+				.update(USER)
+				.set(USER.LASTLOGIN,new java.sql.Timestamp(new Date().getTime()))
+				.where(USER.USERID.eq(user.getUserId()))
+				.execute();
 			}
 	
 			List<String> permissions = db
@@ -407,11 +425,13 @@ public class DBRepository implements IndexedRepository {
 				.on(ROLE_PERMISSION.PERMISSIONID.eq(PERMISSION.PERMISSIONID))
 			.join(USER_ROLE)
 				.on(USER_ROLE.ROLEID.eq(ROLE_PERMISSION.ROLEID))
-				.and(USER_ROLE.USERID.eq(currentUser.getUserId()))
+				.and(USER_ROLE.USERID.eq(user.getUserId()))
 			.fetch()
 			.map(new FieldToValueMapper<String>(PERMISSION.IDENTIFIER));
 			
-			currentUser.setPermissions(permissions);
+			user.setPermissions(permissions);
+			
+			return user;
 		}
 		catch (Exception dae) {
 			db.rollbackTransaction();
@@ -423,6 +443,12 @@ public class DBRepository implements IndexedRepository {
 				db.close();
 			}
 		}
+	
+	}
+	
+	private void loadCurrentUser(
+			Map<String, String> userIdentification) throws IOException {
+		currentUser = createIfAbsent(userIdentification);
 	}
 
 	private void loadContent(DSLContext db) 
@@ -805,7 +831,7 @@ public class DBRepository implements IndexedRepository {
 		TransactionalDSLContext db = new TransactionalDSLContext(dataSource, SQLDialect.MYSQL);
 		
 		try {
-			Integer targetUserId = getUserId(db, userIdentification);
+			Integer targetUserId = getTargetShareUserId(db, userIdentification);
 			Integer corpusId = Integer.valueOf(corpus.getId());
 			
 			if (targetUserId != null) {
@@ -858,7 +884,7 @@ public class DBRepository implements IndexedRepository {
 					.execute();
 				}
 				for (SourceDocument sd : corpus.getSourceDocuments()) {
-					share(db, targetUserId, sd, userIdentification, accessMode);
+					share(db, targetUserId, sd, accessMode);
 				}
 				
 				for (UserMarkupCollectionReference umcRef : 
@@ -885,8 +911,7 @@ public class DBRepository implements IndexedRepository {
 	}
 	
 	private void share(
-		DSLContext db, Integer targetUserId, SourceDocument sourceDocument, 
-		String userIdentification, AccessMode accessMode) throws IOException {
+		DSLContext db, Integer targetUserId, SourceDocument sourceDocument, AccessMode accessMode) throws IOException {
 		
 		Pair<Integer, AccessMode> sourceDocAccess = dbSourceDocumentHandler.getSourceDocumentAccess(
 				db, sourceDocument.getID(), false);
@@ -945,30 +970,38 @@ public class DBRepository implements IndexedRepository {
 			String userIdentification,
 			AccessMode accessMode) throws IOException {
 		DSLContext db = DSL.using(dataSource, SQLDialect.MYSQL);
-		Integer userId = getUserId(db, userIdentification); 
+		Integer userId = getTargetShareUserId(db, userIdentification); 
 		if (userId != null) {
-			share(db, userId, sourceDocument, userIdentification, accessMode);
+			share(db, userId, sourceDocument, accessMode);
 		}
 		else {
 			throw new UnknownUserException(userIdentification);
 		}
 	}
 	
-	private Integer getUserId(DSLContext db, String userIdentification) {
-		Record idRecord = db 
-		.select(USER.USERID)
+	private Integer getTargetShareUserId(DSLContext db, String userIdentification) {
+		Record userRecord = db 
+		.select()
 		.from(USER)
 		.where(USER.IDENTIFIER.equalIgnoreCase(userIdentification))
 		.fetchOne();
 		
-		return (idRecord==null)?null:idRecord.getValue(USER.USERID);
+		if (userRecord != null) {
+			User user = userRecord.map(new UserMapper());
+			
+			if (!user.isSpawnable() || currentUser.hasPermission(Permission.sharewithspawnable)) {
+				return ((DBUser)user).getUserId();
+			}
+		}
+		
+		return null;
 	}
 
 	public void share(UserMarkupCollectionReference userMarkupCollectionRef, 
 			String userIdentification, AccessMode accessMode) throws IOException {
 		TransactionalDSLContext db = new TransactionalDSLContext(dataSource, SQLDialect.MYSQL);
 		
-		Integer userId = getUserId(db, userIdentification);
+		Integer userId = getTargetShareUserId(db, userIdentification);
 		if (userId != null) {
 			try {
 				db.beginTransaction();
@@ -1012,7 +1045,7 @@ public class DBRepository implements IndexedRepository {
 						userMarkupCollectionRef.getId(), 
 						userMarkupCollectionRef.getContentInfoSet()));
 		
-		share(db, targetUserId, sourceDocument, userIdentification, accessMode);
+		share(db, targetUserId, sourceDocument, accessMode);
 		
 		Integer userMarkupCollectionId = 
 				Integer.valueOf(userMarkupCollectionRef.getId());
@@ -1063,7 +1096,7 @@ public class DBRepository implements IndexedRepository {
 		DSLContext db = DSL.using(dataSource, SQLDialect.MYSQL);
 		Integer tagLibraryId = Integer.valueOf(tagLibrary.getId());
 		
-		Integer targetUserId = getUserId(db, userIdentification);
+		Integer targetUserId = getTargetShareUserId(db, userIdentification);
 		if (targetUserId != null) {
 			
 			AccessMode libAccess = 
@@ -1118,5 +1151,50 @@ public class DBRepository implements IndexedRepository {
 	public File getFile(SourceDocument sourceDocument) {
 		return new File(
 			sourceDocument.getSourceContentHandler().getSourceDocumentInfo().getTechInfoSet().getURI());
+	}
+	
+	@Override
+	public int getNewUserMarkupCollectionRefs(Corpus corpus) {
+		return dbUserMarkupCollectionHandler.getNewUserMarkupCollectionRefs(corpus);
+	}
+	
+	@Override
+	public void spawnContentFrom(String userIdentifier, boolean copyCorpora, boolean copyTagLibs) throws IOException {
+		DSLContext db = DSL.using(dataSource, SQLDialect.MYSQL);
+
+		Record record = db
+		.select()
+		.from(USER)
+		.where(USER.IDENTIFIER.equalIgnoreCase(userIdentifier))
+		.fetchOne();
+		
+		if (record != null) {
+			DBUser user = record.map(new UserMapper());
+			if (user.isSpawnable()) {
+				if (copyCorpora || copyTagLibs) {
+					if (copyCorpora) {
+						dbCorpusHandler.copyCorpora(user.getUserId());
+					}
+					
+					if (copyTagLibs) {
+						dbTagLibraryHandler.copyTagLibraries(user.getUserId());
+					}
+				}
+				else {
+					LOG.info("won't spawn content because copyCorpora and copyTagLibs is switched off");
+				}
+			}
+			else {
+				LOG.warning("user " + userIdentifier + " cannot spawn content");
+			}
+		}
+		else {
+			LOG.warning("could not spawn content from " + userIdentifier + ": no such user");
+		}
+	}
+	
+	@Override
+	public TagLibrary getTagLibraryFor(String uuid, Version version) throws IOException {
+		return dbTagLibraryHandler.getTagLibraryFor(uuid, version);
 	}
 }

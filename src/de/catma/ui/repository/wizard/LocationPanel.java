@@ -79,12 +79,13 @@ class LocationPanel extends VerticalLayout implements DynamicWizardStep {
 
 				TechInfoSet ti = 
 						new TechInfoSet(
+								event.getFilename(),
 								new SourceDocumentHandler().getMimeType(
 									event.getFilename(), event.getMIMEType()), // the event's mimetype can be wrong (eg. RTF) 
 								uploadPanel.getUploadedFileUri());
 				
-				wizardResult.getSourceDocumentInfo().setTechInfoSet(ti);
-				onAdvance = true;
+				wizardResult.setInputTechInfoSet(ti);
+				onAdvance = true;				
 				wizardStepListener.stepChanged(LocationPanel.this);
 			}
 		});
@@ -100,8 +101,11 @@ class LocationPanel extends VerticalLayout implements DynamicWizardStep {
 					}
 					URL url = new URL(urlText);
 					
-					TechInfoSet ti = new TechInfoSet(null, url.toURI()); //TODO: mime type detection?
-					wizardResult.getSourceDocumentInfo().setTechInfoSet(ti);
+					String fileName = url.getFile();
+					fileName = fileName.substring(fileName.lastIndexOf('/') + 1).replace("%20", " ");
+					
+					TechInfoSet ti = new TechInfoSet(fileName, null, url.toURI()); //TODO: mime type detection?
+					wizardResult.setInputTechInfoSet(ti);
 					onAdvance = true;
 				}
 				catch(MalformedURLException exc) {
@@ -123,7 +127,7 @@ class LocationPanel extends VerticalLayout implements DynamicWizardStep {
 		setMargin(true);
 		
 //		setSizeFull();
-		HorizontalLayout remoteLayout = new HorizontalLayout();
+		VerticalLayout remoteLayout = new VerticalLayout();
 		remoteLayout.setMargin(true);
 		remoteLayout.setSpacing(true);
 		remoteLayout.setSizeFull();
@@ -138,6 +142,9 @@ class LocationPanel extends VerticalLayout implements DynamicWizardStep {
 		remoteLayout.setExpandRatio(remoteURIInput, 2);
 		
 		addComponent(remoteURIInputPanel);
+		remoteLayout.addComponent(new Label("Please note that some content providers like gutenberg.org "
+				+ "block access to their documents by third party tools like CATMA. "
+				+ "If you encounter any errors loading a file via URI please consider using a mirror of that site."));
 		
 		Label localFileLabel = new Label("or upload a local file from your computer:");
 		addComponent(localFileLabel);

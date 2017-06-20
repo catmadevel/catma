@@ -100,9 +100,15 @@ public class ComplexTypeSelectionPanel extends VerticalLayout implements
 					queryTree.removeLast();
 				}
 
+				String postfix = "";
+				if(!((ComplexTypeOption)complexTypeSelect.getValue()).equals(
+					ComplexTypeOption.UNION)) {
+					postfix = ((TagMatchModeItem)tagMatchModeCombo.getValue()).getTagMatchMode().name().toLowerCase();
+				}
+				
 				queryTree.add(
 					((ComplexTypeOption)complexTypeSelect.getValue()).getQueryElement(),
-					((TagMatchModeItem)tagMatchModeCombo.getValue()).getTagMatchMode().name().toLowerCase());
+					postfix);
 
 				typeAdded = true;
 				
@@ -167,7 +173,7 @@ public class ComplexTypeSelectionPanel extends VerticalLayout implements
 			"The three different match modes influence the way tags refine" +
 			" your search results:" +
 			"<ul>"+
-			"<li>exact match - the tag boundaries have to match exactly to " +
+			"<li>exact match - the tag type boundaries have to match exactly to " +
 			"keep a result item in the result set</li>" +
 			"<li>boundary match - result items that should be kept in the " +
 			"result set must start and end within the boundaries of the tag</li>"+

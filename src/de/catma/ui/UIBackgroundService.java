@@ -1,7 +1,9 @@
 package de.catma.ui;
 
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -14,13 +16,13 @@ import de.catma.backgroundservice.ProgressListener;
 
 public class UIBackgroundService implements BackgroundService {
 
-	private ExecutorService backgroundThread;
+	private ScheduledExecutorService backgroundThread;
 	private boolean background;
 	
 	public UIBackgroundService(boolean background) {
 		this.background = background;
 		if (background) {
-			backgroundThread = Executors.newFixedThreadPool(2);
+			backgroundThread = Executors.newScheduledThreadPool(2);
 		}
 	}
 
@@ -37,8 +39,12 @@ public class UIBackgroundService implements BackgroundService {
                         if (UI.getCurrent() != null && UI.getCurrent().isAttached()) {
 	                        UI.getCurrent().access(new Runnable() {
 	                        	public void run() {
-	                        		listener.done(result);
-	                        		UI.getCurrent().push();
+	                        		try {
+	                        			listener.done(result);
+	                        		}
+	                        		finally {
+//		                        		UI.getCurrent().push();
+	                        		}
 	                        	}
 	                        });
                         }                        
@@ -50,8 +56,12 @@ public class UIBackgroundService implements BackgroundService {
                         	if (UI.getCurrent() != null && UI.getCurrent().isAttached()) {
 	                            UI.getCurrent().access(new Runnable() {
 	                            	public void run() {
-	                            		listener.error(t);
-	                            		UI.getCurrent().push();
+	                            		try {
+	                            			listener.error(t);
+	                            		}
+	                            		finally {
+//		                            		UI.getCurrent().push();
+	                            		}
 	                            	}
 	                            });
                         	}
@@ -77,4 +87,13 @@ public class UIBackgroundService implements BackgroundService {
         }
 	}
 
+	public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command,
+			long initialDelay, long delay, TimeUnit unit) {
+		return backgroundThread.scheduleWithFixedDelay(command, initialDelay,
+				delay, unit);
+	}
+	
+	public void shutdown() {
+		backgroundThread.shutdown();
+	}
 }

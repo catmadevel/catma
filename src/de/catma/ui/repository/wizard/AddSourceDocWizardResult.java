@@ -18,38 +18,42 @@
  */
 package de.catma.ui.repository.wizard;
 
+import java.util.ArrayList;
+import java.util.Collection;
+
 import de.catma.document.source.SourceDocument;
 import de.catma.document.source.SourceDocumentInfo;
+import de.catma.document.source.TechInfoSet;
 
 public class AddSourceDocWizardResult {
-
-	private SourceDocumentInfo sourceDocumentInfo;
-	private SourceDocument sourceDocument;
-	private String sourceDocumentID = null;
 	
+	private TechInfoSet inputTechInfoSet;	
+	private ArrayList<SourceDocumentResult> sourceDocumentResults;
+
 	public AddSourceDocWizardResult() {
 		super();
-		this.sourceDocumentInfo = new SourceDocumentInfo();
+		
+		this.sourceDocumentResults = new ArrayList<SourceDocumentResult>();
 	}
 	
-	public SourceDocumentInfo getSourceDocumentInfo() {
-		return sourceDocumentInfo;
+	public Collection<SourceDocumentResult> getSourceDocumentResults() {
+		return this.sourceDocumentResults;
 	}
 	
-	public SourceDocument getSourceDocument() {
-		return sourceDocument;
+	public void addSourceDocumentResults(ArrayList<SourceDocumentResult> sourceDocumentResults) {
+		this.sourceDocumentResults.addAll(sourceDocumentResults);
 	}
 	
-	public void setSourceDocument(SourceDocument sourceDocument) {
-		this.sourceDocument = sourceDocument;
+	public void clearAllSourceDocumentResults() {
+		this.sourceDocumentResults.clear();
 	}
 	
-	public void setSourceDocumentID(String sourceDocumentID) {
-		this.sourceDocumentID = sourceDocumentID;
+	public TechInfoSet getInputTechInfoSet() {
+		return this.inputTechInfoSet;
 	}
 	
-	public String getSourceDocumentID() {
-		return sourceDocumentID;
+	public void setInputTechInfoSet(TechInfoSet tis) {
+		this.inputTechInfoSet = tis;
 	}
 	
 }

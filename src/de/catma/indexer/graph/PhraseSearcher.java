@@ -6,10 +6,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.logging.Logger;
 
-import javax.naming.Context;
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
-
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -82,6 +78,7 @@ public class PhraseSearcher {
 		
 		private List<String> termList;
 		private TermMatcher termMatcher;
+		private PathUtil pathUtil = new PathUtil();
 		
 		public PhraseSearchEvaluator(List<String> termList, boolean withWildcards) {
 			super();
@@ -156,8 +153,9 @@ public class PhraseSearcher {
 				}
 				
 				if (node.hasLabel(NodeType.Position)) { // should always be a Position node at this point
-					String literal = (String) node.getProperty(PositionProperty.literal.name());
-					literals.add(0, literal);
+//					String literal = (String) node.getProperty(PositionProperty.literal.name());
+					
+					literals.add(0, pathUtil.getLiteralFromPosition(node));
 					
 					if (literals.size() == termList.size()) {
 						return literals;
@@ -218,12 +216,11 @@ public class PhraseSearcher {
 	private Logger logger = Logger.getLogger(this.getClass().getName());
 	private IndexBufferManager indexBufferManager;
 	
-	public PhraseSearcher() throws NamingException {
-		Context context = new InitialContext();
-		
-		graphDb = (GraphDatabaseService) context.lookup(
-						CatmaGraphDbName.CATMAGRAPHDB.name());
-		indexBufferManager = (IndexBufferManager) context.lookup(IndexBufferManagerName.INDEXBUFFERMANAGER.name());
+	public PhraseSearcher() {
+		graphDb = (GraphDatabaseService)
+				CatmaGraphDbName.CATMAGRAPHDB.getGraphDatabaseService();
+		indexBufferManager = 
+				IndexBufferManagerName.INDEXBUFFERMANAGER.getIndeBufferManager();
 	}
 
 	public QueryResult search(List<String> documentIdList, String phrase,

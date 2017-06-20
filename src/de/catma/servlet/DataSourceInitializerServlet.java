@@ -37,11 +37,11 @@ public class DataSourceInitializerServlet extends HttpServlet {
 	        InitialContext context = new InitialContext();
 	        
 			int repoIndex = 1; // assume that the first configured repo is the local db repo
-			String user = RepositoryPropertyKey.RepositoryUser.getValue(repoIndex);
+			String user = RepositoryPropertyKey.RepositoryUser.getIndexedValue(repoIndex);
 					
-			String pass = RepositoryPropertyKey.RepositoryPass.getValue(repoIndex);
+			String pass = RepositoryPropertyKey.RepositoryPass.getIndexedValue(repoIndex);
 			
-			String url = RepositoryPropertyKey.RepositoryUrl.getValue(repoIndex);
+			String url = RepositoryPropertyKey.RepositoryUrl.getIndexedValue(repoIndex);
 	
 			ComboPooledDataSource cpds = new ComboPooledDataSource();
 			
@@ -50,20 +50,21 @@ public class DataSourceInitializerServlet extends HttpServlet {
 			cpds.setUser(user);
 			cpds.setPassword(pass); 
 			cpds.setIdleConnectionTestPeriod(10);
-	
+			CatmaDataSourceName.CATMADS.setDataSource(cpds);
+			
 			context.bind(CatmaDataSourceName.CATMADS.name(), cpds);
 			
 			log("CATMA DB DataSource initialized.");
 			
 			log("CATMA Graph DataSource initializing...");
-			String graphDbPath = RepositoryPropertyKey.GraphDbPath.getValue(repoIndex);
+			String graphDbPath = RepositoryPropertyKey.GraphDbPath.getIndexedValue(repoIndex);
 			
 			final GraphDatabaseService graphDb = 
 				new GraphDatabaseFactory().newEmbeddedDatabaseBuilder(graphDbPath)
 				.loadPropertiesFromFile(cfg.getServletContext().getRealPath("neo4j.properties"))
 				.newGraphDatabase();
 			
-			context.bind(CatmaGraphDbName.CATMAGRAPHDB.name(), graphDb);
+			CatmaGraphDbName.CATMAGRAPHDB.setGraphDatabaseService(graphDb);
 
 	        
             try ( Transaction tx = graphDb.beginTx() )
@@ -109,7 +110,7 @@ public class DataSourceInitializerServlet extends HttpServlet {
             log("CATMA Graph DataSource initialized.");
             
             IndexBufferManager indexBufferManager = new IndexBufferManager();
-            context.bind(IndexBufferManagerName.INDEXBUFFERMANAGER.name(), indexBufferManager);
+            IndexBufferManagerName.INDEXBUFFERMANAGER.setIndeBufferManager(indexBufferManager);
         }
         catch (Exception e) {
         	throw new ServletException(e);
@@ -134,8 +135,7 @@ public class DataSourceInitializerServlet extends HttpServlet {
     	super.destroy();
     	try {
     		log("Closing CATMA DB DataSource...");
-    		((ComboPooledDataSource)new InitialContext().lookup(
-    				CatmaDataSourceName.CATMADS.name())).close();
+    		((ComboPooledDataSource)CatmaDataSourceName.CATMADS.getDataSource()).close();
     		log("CATMA DB DataSource is closed.");
     	}
     	catch (Exception e) {
@@ -143,8 +143,7 @@ public class DataSourceInitializerServlet extends HttpServlet {
     	}
     	try {
     		log("Closing CATMA Graph DataSource...");
-    		((GraphDatabaseService)new InitialContext().lookup(
-    				CatmaGraphDbName.CATMAGRAPHDB.name())).shutdown();
+    		CatmaGraphDbName.CATMAGRAPHDB.getGraphDatabaseService().shutdown();
     		log("CATMA Graph DataSource is closed.");
     	}
     	catch (Exception e) {

@@ -6,5 +6,9 @@ public enum Parameter {
 	format,
 	sid,
 	cid,
+	tid,
+	cname, 
+	accessmode, 
+	userident,
 	;
 }

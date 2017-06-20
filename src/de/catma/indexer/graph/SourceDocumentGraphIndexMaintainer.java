@@ -2,8 +2,6 @@ package de.catma.indexer.graph;
 
 import java.util.logging.Logger;
 
-import javax.naming.Context;
-
 import org.neo4j.graphdb.Direction;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Node;
@@ -20,11 +18,10 @@ public class SourceDocumentGraphIndexMaintainer implements
 	private Logger logger = Logger.getLogger(SourceDocumentGraphIndexMaintainer.class.getName());
 
 	@Override
-	public int checkSourceDocumentIndex(Context context, int maxObjectCount, int offset) throws Exception {
+	public int checkSourceDocumentIndex(int maxObjectCount, int offset) throws Exception {
 		
 		GraphDatabaseService graphDatabaseService = 
-				(GraphDatabaseService) context.lookup(
-						CatmaGraphDbName.CATMAGRAPHDB.name());
+					CatmaGraphDbName.CATMAGRAPHDB.getGraphDatabaseService();
 		
 		
 		try (Transaction tx = graphDatabaseService.beginTx()) {
@@ -59,7 +56,7 @@ public class SourceDocumentGraphIndexMaintainer implements
 						
 						logger.info(
 							"found position node " + positionNode + " " 
-									+ positionNode.getProperty(PositionProperty.literal.name()) 
+									+ termNode.getProperty(TermProperty.literal.name()) 
 									+ "@[" + positionNode.getProperty(PositionProperty.start.name()) 
 									+ ","
 									+ positionNode.getProperty(PositionProperty.end.name())
@@ -101,6 +98,7 @@ public class SourceDocumentGraphIndexMaintainer implements
 				}
 				logger.info("deleting sd " + sdNode);
 				sdNode.delete();
+				tx.success();
 			}
 			else {
 				sdIterator.close();
